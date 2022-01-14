@@ -13,6 +13,8 @@ in that this package:
 
 ## CURRENT STATUS
 
+THIS PACKAGE DOES NOT WORK YET. IT'S A CONCEPT/STUDY.
+
 * Wrote preliminary API design for fsnotify
 * Seeing how I would write fsnotify-inotify backend
 
