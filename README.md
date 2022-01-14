@@ -28,7 +28,6 @@ import (
   "syscall"
 
   "github.com/lestrrat-go/fsnotify"
-  "github.com/lestrrat-go/fsnotify-inotify"
 )
 
 func main() {
@@ -41,7 +40,7 @@ func main() {
   defer cancel()
 
 
-  w := fsnotify.New(inotify.New())
+  w := fsnotify.New()
   w.Add(`/path/fo/target`)
 
   evCh := make(chan *fsnotify.Event)
