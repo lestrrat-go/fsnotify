@@ -44,20 +44,26 @@ type Watcher struct {
 	// list of commands that yet to be passed to the main Watch() goroutine
 	pending []*ctrlCmd
 
+	// list of unhandled events
+	events []*Event
+
 	control chan *ctrlCmd
 
-	mu   *sync.RWMutex
-	cond *sync.Cond
+	muPending *sync.RWMutex
+	muEvents  *sync.RWMutex
+	cond      *sync.Cond
 }
 
 func New(d Driver) *Watcher {
-	var mu sync.RWMutex
+	var muEvents sync.RWMutex
+	var muPending sync.RWMutex
 	return &Watcher{
-		cond:    sync.NewCond(&mu),
-		control: make(chan *ctrlCmd, 1),
-		driver:  d,
-		mu:      &mu,
-		targets: make(map[string]struct{}),
+		cond:      sync.NewCond(&muPending),
+		control:   make(chan *ctrlCmd, 1),
+		driver:    d,
+		muEvents:  &muEvents,
+		muPending: &muPending,
+		targets:   make(map[string]struct{}),
 	}
 }
 
@@ -66,9 +72,9 @@ func (w *Watcher) Driver() Driver {
 }
 
 func (w *Watcher) addCmd(cmd *ctrlCmd) {
-	w.mu.Lock()
+	w.muPending.Lock()
 	w.pending = append(w.pending, cmd)
-	w.mu.Unlock()
+	w.muPending.Unlock()
 	// Send a signal to the goroutine that is listening for
 	// update requests. It is important to make this a sync.Cond
 	// object such that it has no effect even in the absense
@@ -102,6 +108,7 @@ func (w *Watcher) Remove(fn string) {
 
 }
 
+// ErrorSink is the destination where errors are reported to
 type ErrorSink interface {
 	// Error accepts an error that occurred during the execution
 	// of `Watch()`. It must be non-blocking.
@@ -115,23 +122,23 @@ func (w *Watcher) processPendingCmds(ctx context.Context) {
 			return
 		}
 
-		w.mu.Lock()
+		w.muPending.Lock()
 		for len(w.pending) == 0 {
 			w.cond.Wait()
 		}
-		w.mu.Unlock()
+		w.muPending.Unlock()
 
 		// w.pending is populated. draing the queue
 		for {
-			w.mu.Lock()
+			w.muPending.Lock()
 			l := len(w.pending)
 			if l == 0 {
-				w.mu.Unlock()
+				w.muPending.Unlock()
 				break
 			}
 			cmd := w.pending[0]
 			w.pending = w.pending[1:]
-			w.mu.Unlock()
+			w.muPending.Unlock()
 
 			select {
 			case <-ctx.Done():
@@ -144,24 +151,30 @@ func (w *Watcher) processPendingCmds(ctx context.Context) {
 
 type nilSink struct{}
 
+func (nilSink) Event(*Event) {}
 func (nilSink) Error(error) {}
 
 // EventSink is the destination where each Driver should send events to.
-type EventSink struct {
-	watcher *Watcher
-}
-
-func (s *EventSink) Event(ev *Event) {
-	s.watcher.addCmd(&ctrlCmd{
-		Type: cmdEvent,
-		Arg:  ev,
-	})
+type EventSink interface {
+	Event(*Event)
 }
 
 // Watch starts the watcher. By default it watches in the foreground,
 // therefore if you would like this to run in the background you should
 // execute it as a separate goroutine.
 func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
+	// Unpack the options.
+	var errSink ErrorSink = nilSink{}
+	var evSink EventSink = nilSink{}
+	for _, option := range options {
+		switch option.Ident() {
+		case identErrorSink{}:
+			errSink = option.Value().(ErrorSink)
+		case identEventSink{}:
+			evSink = option.Value().(EventSink)
+		}
+	}
+
 	// This is used to notify THIS goroutine about user
 	// commands being queued.
 	go w.processPendingCmds(ctx)
@@ -171,9 +184,7 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 
 	// Let the driver do its thing, and watch the events.
 	// The second argument is the data sink
-	go w.driver.Run(ctx, &EventSink{watcher: w})
-
-	errSink := nilSink{}
+	go w.driver.Run(ctx, evSink, errSink)
 
 	// While the driver does its thing, we process user commands.
 	for {

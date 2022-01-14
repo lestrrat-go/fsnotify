@@ -12,5 +12,5 @@ type Driver interface {
 	Remove(string) error
 
 	// Run starts the driver's processing of the entries
-	Run(context.Context, *EventSink)
+	Run(context.Context, EventSink, ErrorSink)
 }

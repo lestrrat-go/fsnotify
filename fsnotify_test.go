@@ -12,15 +12,26 @@ func ExampleInotify() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watcher.Run(ctx)
+
+	eventCh := make(chan *fsnotify.Event)
+	errCh := make(chan error)
+
+	go watcher.Watch(ctx,
+		// The event and error sinks can be of any type, but here
+		// we're using channels
+		fsnotify.WithEventSink(fsnotify.ChannelEventSink(eventCh)),
+		fsnotify.WithErrorSink(fsnotify.ChannelErrorSink(errCh)),
+	)
 
 	watcher.Add("/foo/bar/baz")
 
-	for watcher.Next() {
-		ev := watcher.Event()
-
-		switch ev.Type {
-
+	for {
+		select {
+		case err := <-errCh:
+		case ev := <-eventCh:
+		case <-ctx.Done():
+			return
 		}
 	}
+
 }
