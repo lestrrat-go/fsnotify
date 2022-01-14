@@ -11,6 +11,11 @@ in that this package:
 2. Allows user to choose where to send their data via use of abstract Sinks
 3. Does not implicitly use goroutines, but rather asks the user to choose by providing a `w.Watch()` method that can be called as `go w.Watch(...)`
 
+## CURRENT STATUS
+
+* Wrote preliminary API design for fsnotify
+* Seeing how I would write fsnotify-inotify backend
+
 ## SYNOPSIS
 
 ```go
