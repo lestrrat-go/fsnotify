@@ -25,19 +25,19 @@ import (
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(
-		context.Background(),
-		syscall.SIGHUP,
-		syscall.SIGTERM,
-		syscall.SIGQUIT,
-	)
+  ctx, cancel := signal.NotifyContext(
+    context.Background(),
+    syscall.SIGHUP,
+    syscall.SIGTERM,
+    syscall.SIGQUIT,
+  )
   defer cancel()
 
 
   w := fsnotify.New(inotify.New())
   w.Add(`/path/fo/target`)
 
-	evCh := make(chan *fsnotify.Event)
+  evCh := make(chan *fsnotify.Event)
   errCh := make(chan error)
   go w.Watch(ctx, 
     fsnotify.WithEventSink(fsnotify.ChannelEventSink(evCh)),
@@ -46,8 +46,8 @@ func main() {
 
   for {
     select {
-		case <-ctx.Done():
-			return
+    case <-ctx.Done():
+      return
     case ev := <-evCh:
       ...
     case err := <-errCh:
