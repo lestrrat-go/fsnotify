@@ -4,12 +4,10 @@ import (
 	"context"
 
 	"github.com/lestrrat-go/fsnotify"
-	"github.com/lestrrat-go/fsnotify-inotify"
 )
 
 func ExampleInotify() {
-	driver := inotify.New()
-	watcher := fsnotify.New(driver)
+	watcher := fsnotify.New()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

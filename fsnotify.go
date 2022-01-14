@@ -9,11 +9,11 @@ import (
 type Op uint32
 
 const (
-	Create Op = 1 << iota
-	Write
-	Remove
-	Rename
-	Chmod
+	OpCreate Op = 1 << iota
+	OpWrite
+	OpRemove
+	OpRename
+	OpChmod
 )
 
 type Event struct {
@@ -54,7 +54,8 @@ type Watcher struct {
 	cond      *sync.Cond
 }
 
-func New(d Driver) *Watcher {
+// Create creates a new Watcher using the specified Driver.
+func Create(d Driver) *Watcher {
 	var muEvents sync.RWMutex
 	var muPending sync.RWMutex
 	return &Watcher{
