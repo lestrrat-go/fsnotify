@@ -58,7 +58,7 @@ type Watcher struct {
 // object. When `fsnotify.New()` is called. If you would like to change
 // the underlying Driver that is instantiated by default, change the
 // value of this function.
-var DefaultDriverFunc func() *Driver
+var DefaultDriverFunc func() Driver
 
 // New creates a new Watcher using the default underlying
 // implementation.
@@ -219,7 +219,7 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 	// after it has been initialized once. This process assures that the
 	// user doesn't have to re-add everything, while keeping the API
 	// completely detached from how the Driver stores this data
-	for _, fn := range w.targets {
+	for fn := range w.targets {
 		w.add(fn)
 	}
 

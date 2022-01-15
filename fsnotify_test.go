@@ -27,7 +27,9 @@ func ExampleInotify() {
 	for {
 		select {
 		case err := <-errCh:
+			_ = err
 		case ev := <-eventCh:
+			_ = ev
 		case <-ctx.Done():
 			return
 		}

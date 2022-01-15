@@ -19,5 +19,5 @@ type Driver interface {
 	//
 	// The third and fourht parameters are where events and errors
 	// should be sent from the Driver
-	Run(context.Context, chan struct, EventSink, ErrorSink)
+	Run(context.Context, chan struct{}, EventSink, ErrorSink)
 }
