@@ -90,11 +90,15 @@ func (w *Watcher) Add(fn string) {
 	_, ok := w.targets[fn]
 	if !ok {
 		w.targets[fn] = struct{}{}
-		w.addCmd(&ctrlCmd{
-			Type: cmdAddEntry,
-			Arg:  fn,
-		})
+		w.add(fn)
 	}
+}
+
+func (w *Watcher) add(fn string) {
+	w.addCmd(&ctrlCmd{
+		Type: cmdAddEntry,
+		Arg:  fn,
+	})
 }
 
 func (w *Watcher) Remove(fn string) {
@@ -153,7 +157,7 @@ func (w *Watcher) processPendingCmds(ctx context.Context) {
 type nilSink struct{}
 
 func (nilSink) Event(*Event) {}
-func (nilSink) Error(error) {}
+func (nilSink) Error(error)  {}
 
 // EventSink is the destination where each Driver should send events to.
 type EventSink interface {
@@ -179,13 +183,29 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 	// This is used to notify THIS goroutine about user
 	// commands being queued.
 	go w.processPendingCmds(ctx)
+
 	// Make sure to wake up the above goroutine once when we exit,
 	// so it can clean after itself
 	defer w.cond.Signal()
 
 	// Let the driver do its thing, and watch the events.
 	// The second argument is the data sink
-	go w.driver.Run(ctx, evSink, errSink)
+	ready := make(chan struct{})
+	go w.driver.Run(ctx, ready, evSink, errSink)
+
+	<-ready
+
+	// re-add targets. The driver could have been restarted
+	// after it has been initialized once. This process assures that the
+	// user doesn't have to re-add everything, while keeping the API
+	// completely detached from how the Driver stores this data
+	for _, fn := range w.targets {
+		w.add(fn)
+	}
+
+	// Let the command queue know that we're ready, just to make sure
+	// everything that was done while we were idle is flushed
+	w.cond.Signal()
 
 	// While the driver does its thing, we process user commands.
 	for {

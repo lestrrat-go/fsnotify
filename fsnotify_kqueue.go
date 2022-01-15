@@ -3,6 +3,7 @@
 
 package fsnotify
 
+// UNIMPLEMENTED
 import "github.com/lestrrat-go/fsnotify-kqueue"
 
 // New creates a new Watcher using the default underlying
@@ -10,4 +11,3 @@ import "github.com/lestrrat-go/fsnotify-kqueue"
 func New() *Watcher {
 	return Create(kqueue.New())
 }
-
