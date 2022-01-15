@@ -4,10 +4,11 @@
 package fsnotify
 
 // UNIMPLEMENTED
-import "github.com/lestrrat-go/fsnotify-kqueue"
+import (
+	kqueue "github.com/lestrrat-go/fsnotify-kqueue"
+)
 
-// New creates a new Watcher using the default underlying
-// implementation.
-func New() *Watcher {
-	return Create(kqueue.New())
+func init() {
+	DefaultDriverFunc = kqueue.New
 }
+

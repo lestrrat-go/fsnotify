@@ -54,6 +54,18 @@ type Watcher struct {
 	cond      *sync.Cond
 }
 
+// DefaultDriverFunc is the function called to create the default Driver
+// object. When `fsnotify.New()` is called. If you would like to change
+// the underlying Driver that is instantiated by default, change the
+// value of this function.
+var DefaultDriverFunc func() *Driver
+
+// New creates a new Watcher using the default underlying
+// implementation.
+func New() *Watcher {
+	return Create(DefaultDriverFunc())
+}
+
 // Create creates a new Watcher using the specified Driver.
 func Create(d Driver) *Watcher {
 	var muEvents sync.RWMutex
