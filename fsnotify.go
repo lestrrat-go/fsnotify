@@ -164,10 +164,18 @@ type EventSink interface {
 	Event(*Event)
 }
 
+func (w *Watcher) clearPending() {
+	w.muPending.Lock()
+	w.pending = nil
+	w.muPending.Unlock()
+}
+
 // Watch starts the watcher. By default it watches in the foreground,
 // therefore if you would like this to run in the background you should
 // execute it as a separate goroutine.
 func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
+	defer w.clearPending()
+
 	// Unpack the options.
 	var errSink ErrorSink = nilSink{}
 	var evSink EventSink = nilSink{}
