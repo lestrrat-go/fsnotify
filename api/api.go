@@ -6,7 +6,10 @@
 
 package api
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 type OpMask uint32
 type Op uint32
@@ -44,8 +47,8 @@ func (mask *OpMask) Unset(op Op) {
 	*((*uint32)(mask)) ^= uint32(op)
 }
 
-func (mask *OpMask) IsSet(op Op) bool {
-	return *((*uint32)(mask))&uint32(op) != 0
+func (mask OpMask) IsSet(op Op) bool {
+	return uint32(mask)&uint32(op) != 0
 }
 
 func (mask OpMask) String() string {
@@ -75,6 +78,10 @@ type Event interface {
 
 	// OpMask returns a bitmask of operation(s) that caused this event
 	Mask() OpMask
+
+	// String() returns the string representation in a human readable
+	// format. Do not expect the string to be stable or parsable.
+	String() string
 }
 
 type event struct {
@@ -96,6 +103,15 @@ func (ev *event) Op() OpMask {
 
 func (ev *event) Mask() OpMask {
 	return ev.mask
+}
+
+func (ev *event) String() string {
+	var builder strings.Builder
+	builder.WriteString(strconv.Quote(ev.name))
+	builder.WriteString(` [`)
+	builder.WriteString(ev.mask.String())
+	builder.WriteString(`]`)
+	return builder.String()
 }
 
 // EventSink is the destination where each Driver should send events to.
