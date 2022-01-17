@@ -1,15 +1,19 @@
 package fsnotify
 
-import "context"
+import (
+	"context"
+
+	"github.com/lestrrat-go/fsnotify/api"
+)
 
 // Driver is the interface that must be implemented by the
 // underlying fsnotify implementation.
 type Driver interface {
 	// Add adds a new watch target to the driver.
-	Add(string) error
+	Add(context.Context, string) error
 
 	// Remove removes a watch target.
-	Remove(string) error
+	Remove(context.Context, string) error
 
 	// Run starts the driver's processing of the entries.
 	//
@@ -19,5 +23,5 @@ type Driver interface {
 	//
 	// The third and fourht parameters are where events and errors
 	// should be sent from the Driver
-	Run(context.Context, chan struct{}, EventSink, ErrorSink)
+	Run(context.Context, chan struct{}, api.EventSink, api.ErrorSink)
 }

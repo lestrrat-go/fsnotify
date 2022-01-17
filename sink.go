@@ -1,8 +1,10 @@
 package fsnotify
 
-type ChannelEventSink chan *Event
+import "github.com/lestrrat-go/fsnotify/api"
 
-func (sink ChannelEventSink) Event(ev *Event) {
+type ChannelEventSink chan api.Event
+
+func (sink ChannelEventSink) Event(ev api.Event) {
 	sink <- ev
 }
 

@@ -4,22 +4,9 @@ import (
 	"context"
 	"path/filepath"
 	"sync"
+
+	"github.com/lestrrat-go/fsnotify/api"
 )
-
-type Op uint32
-
-const (
-	OpCreate Op = 1 << iota
-	OpWrite
-	OpRemove
-	OpRename
-	OpChmod
-)
-
-type Event struct {
-	Name string // relative path to file/directory
-	Op   Op     //Platform-independent bitmask
-}
 
 type ctrlCmdType int
 
@@ -45,25 +32,13 @@ type Watcher struct {
 	pending []*ctrlCmd
 
 	// list of unhandled events
-	events []*Event
+	events []api.Event
 
 	control chan *ctrlCmd
 
 	muPending *sync.RWMutex
 	muEvents  *sync.RWMutex
 	cond      *sync.Cond
-}
-
-// DefaultDriverFunc is the function called to create the default Driver
-// object. When `fsnotify.New()` is called. If you would like to change
-// the underlying Driver that is instantiated by default, change the
-// value of this function.
-var DefaultDriverFunc func() Driver
-
-// New creates a new Watcher using the default underlying
-// implementation.
-func New() *Watcher {
-	return Create(DefaultDriverFunc())
 }
 
 // Create creates a new Watcher using the specified Driver.
@@ -125,18 +100,12 @@ func (w *Watcher) Remove(fn string) {
 
 }
 
-// ErrorSink is the destination where errors are reported to
-type ErrorSink interface {
-	// Error accepts an error that occurred during the execution
-	// of `Watch()`. It must be non-blocking.
-	Error(error)
-}
-
 func (w *Watcher) processPendingCmds(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		default:
 		}
 
 		w.muPending.Lock()
@@ -168,13 +137,8 @@ func (w *Watcher) processPendingCmds(ctx context.Context) {
 
 type nilSink struct{}
 
-func (nilSink) Event(*Event) {}
-func (nilSink) Error(error)  {}
-
-// EventSink is the destination where each Driver should send events to.
-type EventSink interface {
-	Event(*Event)
-}
+func (nilSink) Event(api.Event) {}
+func (nilSink) Error(error)     {}
 
 func (w *Watcher) clearPending() {
 	w.muPending.Lock()
@@ -189,14 +153,14 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 	defer w.clearPending()
 
 	// Unpack the options.
-	var errSink ErrorSink = nilSink{}
-	var evSink EventSink = nilSink{}
+	var errSink api.ErrorSink = nilSink{}
+	var evSink api.EventSink = nilSink{}
 	for _, option := range options {
 		switch option.Ident() {
 		case identErrorSink{}:
-			errSink = option.Value().(ErrorSink)
+			errSink = option.Value().(api.ErrorSink)
 		case identEventSink{}:
-			evSink = option.Value().(EventSink)
+			evSink = option.Value().(api.EventSink)
 		}
 	}
 
@@ -246,15 +210,15 @@ func (w *Watcher) handleControlCmd(ctx context.Context, cmd *ctrlCmd) error {
 		//nolint:forcetypeassert
 		name := cmd.Arg.(string)
 		name = filepath.Clean(name)
-		return w.driver.Add(name)
+		return w.driver.Add(ctx, name)
 	case cmdRemoveEntry:
 		//nolint:forcetypeassert
 		name := cmd.Arg.(string)
 		name = filepath.Clean(name)
-		return w.driver.Remove(name)
+		return w.driver.Remove(ctx, name)
 	default:
 		//nolint:forcetypeassert
-		ev := cmd.Arg.(*Event)
+		ev := cmd.Arg.(api.Event)
 		// add the event to the events queue
 		w.muEvents.Lock()
 		w.events = append(w.events, ev)

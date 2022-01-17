@@ -17,6 +17,8 @@ THIS PACKAGE DOES NOT WORK YET. IT'S A CONCEPT/STUDY.
 
 * Wrote preliminary API design for fsnotify
 * Seeing how I would write fsnotify-inotify backend
+  * decided to bundle it in a different package withing this repository
+  * _SOMETHING_ works. Not entirely tested
 
 ## SYNOPSIS
 
