@@ -299,10 +299,10 @@ func (rctx *runCtx) doEpoll(ctx context.Context) {
 		var offset uint32
 		for max := uint32(n - unix.SizeofInotifyEvent); offset <= max; {
 			raw := (*unix.InotifyEvent)(unsafe.Pointer(&buf[offset]))
-			mask := uint32(raw.Mask)
+			rawMask := uint32(raw.Mask)
 			nameLen := uint32(raw.Len)
 
-			if mask&unix.IN_Q_OVERFLOW != 0 {
+			if rawMask&unix.IN_Q_OVERFLOW != 0 {
 				rctx.errsink.Error(ErrEventOverflow)
 			}
 
@@ -316,7 +316,7 @@ func (rctx *runCtx) doEpoll(ctx context.Context) {
 			// This is a sign to clean up the maps, otherwise we are no longer in sync
 			// with the inotify kernel state which has already deleted the watch
 			// automatically.
-			if ok && mask&unix.IN_DELETE_SELF == unix.IN_DELETE_SELF {
+			if ok && rawMask&unix.IN_DELETE_SELF == unix.IN_DELETE_SELF {
 				delete(rctx.paths, int(raw.Wd))
 				delete(rctx.watches, name)
 			}
@@ -329,9 +329,9 @@ func (rctx *runCtx) doEpoll(ctx context.Context) {
 				name += "/" + strings.TrimRight(string(bytes[0:nameLen]), "\000")
 			}
 
-			op := newOp(mask)
-			if !ignoreLinux(name, op, mask) {
-				event := api.NewEvent(name, op)
+			mask := newOpMask(rawMask)
+			if !ignoreLinux(name, mask, rawMask) {
+				event := api.NewEvent(name, mask)
 				rctx.evsink.Event(event)
 			}
 
@@ -341,31 +341,31 @@ func (rctx *runCtx) doEpoll(ctx context.Context) {
 	}
 }
 
-func newOp(mask uint32) api.Op {
-	var op api.Op
-	if mask&unix.IN_CREATE == unix.IN_CREATE || mask&unix.IN_MOVED_TO == unix.IN_MOVED_TO {
-		op.Mark(api.OpCreate)
+func newOpMask(rawMask uint32) api.OpMask {
+	var mask api.OpMask
+	if rawMask&unix.IN_CREATE == unix.IN_CREATE || rawMask&unix.IN_MOVED_TO == unix.IN_MOVED_TO {
+		mask.Set(api.OpCreate)
 	}
-	if mask&unix.IN_DELETE_SELF == unix.IN_DELETE_SELF || mask&unix.IN_DELETE == unix.IN_DELETE {
-		op.Mark(api.OpRemove)
+	if rawMask&unix.IN_DELETE_SELF == unix.IN_DELETE_SELF || rawMask&unix.IN_DELETE == unix.IN_DELETE {
+		mask.Set(api.OpRemove)
 	}
-	if mask&unix.IN_MODIFY == unix.IN_MODIFY {
-		op.Mark(api.OpWrite)
+	if rawMask&unix.IN_MODIFY == unix.IN_MODIFY {
+		mask.Set(api.OpWrite)
 	}
-	if mask&unix.IN_MOVE_SELF == unix.IN_MOVE_SELF || mask&unix.IN_MOVED_FROM == unix.IN_MOVED_FROM {
-		op.Mark(api.OpRename)
+	if rawMask&unix.IN_MOVE_SELF == unix.IN_MOVE_SELF || rawMask&unix.IN_MOVED_FROM == unix.IN_MOVED_FROM {
+		mask.Set(api.OpRename)
 	}
-	if mask&unix.IN_ATTRIB == unix.IN_ATTRIB {
-		op.Mark(api.OpChmod)
+	if rawMask&unix.IN_ATTRIB == unix.IN_ATTRIB {
+		mask.Set(api.OpChmod)
 	}
-	return op
+	return mask
 }
 
 // Certain types of events can be "ignored" and not sent over the Events
 // channel. Such as events marked ignore by the kernel, or MODIFY events
 // against files that do not exist.
-func ignoreLinux(name string, op api.Op, mask uint32) bool {
-	if mask&unix.IN_IGNORED != 0 {
+func ignoreLinux(name string, mask api.OpMask, rawMask uint32) bool {
+	if rawMask&unix.IN_IGNORED != 0 {
 		return true
 	}
 
@@ -374,7 +374,7 @@ func ignoreLinux(name string, op api.Op, mask uint32) bool {
 	// *Note*: this was put in place because it was seen that a MODIFY
 	// event was sent after the DELETE. This ignores that MODIFY and
 	// assumes a DELETE will come or has come if the file doesn't exist.
-	if !op.IsSet(api.OpRemove) && !op.IsSet(api.OpRename) {
+	if !mask.IsSet(api.OpRemove) && !mask.IsSet(api.OpRename) {
 		_, statErr := os.Lstat(name)
 		return os.IsNotExist(statErr)
 	}

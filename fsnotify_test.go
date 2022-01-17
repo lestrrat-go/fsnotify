@@ -37,6 +37,4 @@ func ExampleInotify() {
 			return
 		}
 	}
-
-	// OUTPUT:
 }

@@ -6,26 +6,61 @@
 
 package api
 
+import "strings"
+
+type OpMask uint32
 type Op uint32
 
 const (
-	OpCreate uint32 = 1 << iota
+	OpCreate Op = 1 << iota
 	OpWrite
 	OpRemove
 	OpRename
 	OpChmod
 )
 
-func (op *Op) Mark(v uint32) {
-	*((*uint32)(op)) |= v
+func (op Op) String() string {
+	switch op {
+	case OpCreate:
+		return "CREATE"
+	case OpWrite:
+		return "WRITE"
+	case OpRemove:
+		return "REMOVE"
+	case OpRename:
+		return "RENAME"
+	case OpChmod:
+		return "CHMOD"
+	default:
+		return "INVALID OP"
+	}
 }
 
-func (op *Op) Unmark(v uint32) {
-	*((*uint32)(op)) ^= v
+func (mask *OpMask) Set(op Op) {
+	*((*uint32)(mask)) |= uint32(op)
 }
 
-func (op *Op) IsSet(v uint32) bool {
-	return *((*uint32)(op))&v != 0
+func (mask *OpMask) Unset(op Op) {
+	*((*uint32)(mask)) ^= uint32(op)
+}
+
+func (mask *OpMask) IsSet(op Op) bool {
+	return *((*uint32)(mask))&uint32(op) != 0
+}
+
+func (mask OpMask) String() string {
+	var builder strings.Builder
+
+	for _, op := range []Op{OpCreate, OpRemove, OpWrite, OpRename, OpChmod} {
+		if uint32(mask)&uint32(op) == 0 {
+			continue
+		}
+		if builder.Len() > 0 {
+			builder.WriteByte('|')
+		}
+		builder.WriteString(op.String())
+	}
+	return builder.String()
 }
 
 // Event represents a file system event. It is an interface
@@ -35,25 +70,32 @@ type Event interface {
 	// Name returns the name of file that caused this event
 	Name() string
 
-	// Op returns a bitmask of operation(s) that caused this event
-	Op() uint32
+	// Op is a compatibility layer for github.com/fsnotify/fsnotify.
+	Op() OpMask
+
+	// OpMask returns a bitmask of operation(s) that caused this event
+	Mask() OpMask
 }
 
 type event struct {
 	name string
-	op   Op
+	mask OpMask
 }
 
-func NewEvent(name string, op Op) Event {
-	return &event{name: name, op: op}
+func NewEvent(name string, mask OpMask) Event {
+	return &event{name: name, mask: mask}
 }
 
 func (ev *event) Name() string {
 	return ev.name
 }
 
-func (ev *event) Op() uint32 {
-	return uint32(ev.op)
+func (ev *event) Op() OpMask {
+	return ev.Mask()
+}
+
+func (ev *event) Mask() OpMask {
+	return ev.mask
 }
 
 // EventSink is the destination where each Driver should send events to.
