@@ -70,7 +70,9 @@ func TestWatcher(t *testing.T) {
 
 	var events []api.Event
 	var errors []error
+	done := make(chan struct{})
 	go func(ctx context.Context) {
+		defer close(done)
 		for {
 			select {
 			case err := <-errCh:
@@ -83,8 +85,7 @@ func TestWatcher(t *testing.T) {
 		}
 	}(ctx)
 
-	<-ctx.Done()
-
+	<-done
 	if !assert.Len(t, errors, 0, `there should be no errors`) {
 		t.Logf("%#v", errors)
 		return

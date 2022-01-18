@@ -38,19 +38,20 @@ type Watcher struct {
 
 	muPending *sync.RWMutex
 	muEvents  *sync.RWMutex
+	muTargets *sync.RWMutex
 	cond      *sync.Cond
 }
 
 // Create creates a new Watcher using the specified Driver.
 func Create(d Driver) *Watcher {
-	var muEvents sync.RWMutex
 	var muPending sync.RWMutex
 	return &Watcher{
 		cond:      sync.NewCond(&muPending),
 		control:   make(chan *ctrlCmd, 1),
 		driver:    d,
-		muEvents:  &muEvents,
+		muEvents:  &sync.RWMutex{},
 		muPending: &muPending,
+		muTargets: &sync.RWMutex{},
 		targets:   make(map[string]struct{}),
 	}
 }
@@ -74,13 +75,19 @@ func (w *Watcher) addCmd(cmd *ctrlCmd) {
 }
 
 func (w *Watcher) Add(fn string) {
+	w.muTargets.Lock()
 	_, ok := w.targets[fn]
 	if !ok {
 		w.targets[fn] = struct{}{}
+	}
+	w.muTargets.Unlock()
+
+	if !ok {
 		w.add(fn)
 	}
 }
 
+// factored out so that it can be used elsewhere
 func (w *Watcher) add(fn string) {
 	w.addCmd(&ctrlCmd{
 		Type: cmdAddEntry,
@@ -89,15 +96,19 @@ func (w *Watcher) add(fn string) {
 }
 
 func (w *Watcher) Remove(fn string) {
+	w.muTargets.Lock()
 	_, ok := w.targets[fn]
 	if ok {
 		delete(w.targets, fn)
+	}
+	w.muTargets.Unlock()
+
+	if ok {
 		w.addCmd(&ctrlCmd{
 			Type: cmdRemoveEntry,
 			Arg:  fn,
 		})
 	}
-
 }
 
 func (w *Watcher) processPendingCmds(ctx context.Context) {
@@ -183,9 +194,11 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 	// after it has been initialized once. This process assures that the
 	// user doesn't have to re-add everything, while keeping the API
 	// completely detached from how the Driver stores this data
+	w.muTargets.Lock()
 	for fn := range w.targets {
 		w.add(fn)
 	}
+	w.muTargets.Unlock()
 
 	// Let the command queue know that we're ready, just to make sure
 	// everything that was done while we were idle is flushed
