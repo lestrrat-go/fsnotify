@@ -25,3 +25,16 @@ type Driver interface {
 	// should be sent from the Driver
 	Run(context.Context, chan struct{}, api.EventSink, api.ErrorSink)
 }
+
+// NullDriver exists to be plugged in when there are no other
+// drivers to be used. fsnotify will not function, but your
+// code will at least not die a horrible death.
+type NullDriver struct{}
+
+func (_ NullDriver) Add(_ context.Context, _ string) error {
+	return nil
+}
+func (_ NullDriver) Remove(_ context.Context, _ string) error {
+	return nil
+}
+func (_ NullDriver) Run(_ context.Context, _ api.EventSink, _ api.ErrorSink) {}
