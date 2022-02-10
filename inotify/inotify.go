@@ -16,21 +16,40 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type CommandOption = api.CommandOption
+
+const (
+	cmdAdd = iota + 1
+	cmdRemove
+)
+
 var ErrEventOverflow = fmt.Errorf(`fsnotify queue overflow`)
 
 // Driver is the inotify backed fsnotify driver.
 // The driver itself doesn't keep state. Stateful operations
 // are abstracted within the Run() method.
 type Driver struct {
-	control chan *cmdRequest
+	control chan *api.Command
+	data    chan interface{}
+	pending *api.CommandQueue
 }
 
 func New() *Driver {
-	return &Driver{}
+	d := &Driver{}
+	d.pending = api.NewCommandQueue(api.CommandQueueEgressChooseFunc(func(cmd *api.Command) chan *api.Command {
+		switch cmd.Type {
+		case cmdAdd, cmdRemove:
+			return d.control
+		default:
+			panic("unimplemented")
+		}
+	}))
+	return d
 }
 
 type runCtx struct {
-	mu       sync.RWMutex
+	mu sync.RWMutex
+
 	epfd     int // epoll fd
 	infd     int // inotify fd
 	wakeupfd int // read fd for pipe used to wake up epoll
@@ -82,8 +101,45 @@ func (rctx *runCtx) epollWakeClear() error {
 	return err
 }
 
+/*
+
+func (driver *Driver) drainPending(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		driver.cond.L.Lock()
+		for len(driver.pending) <= 0 {
+			driver.cond.Wait()
+
+			select {
+			case <-ctx.Done():
+				driver.cond.L.Unlock()
+				return
+			default:
+			}
+		}
+
+		for len(driver.pending) > 0 {
+			cmd := driver.pending[0]
+			select {
+			case <-ctx.Done():
+				driver.cond.L.Unlock()
+				return
+			case driver.control <- cmd:
+			}
+		}
+
+		driver.cond.L.Unlock()
+	}
+}
+*/
+
 func (driver *Driver) Run(ctx context.Context, ready chan struct{}, evsink api.EventSink, errsink api.ErrorSink) {
-	driver.control = make(chan *cmdRequest)
+	driver.control = make(chan *api.Command)
 
 	infd, err := unix.InotifyInit1(unix.IN_CLOEXEC)
 	if infd == -1 {
@@ -127,6 +183,7 @@ func (driver *Driver) Run(ctx context.Context, ready chan struct{}, evsink api.E
 		watches:  make(map[string]*watch),
 	}
 
+	go driver.pending.Drain(ctx)
 	go rctx.doEpoll(ctx)
 
 	close(ready)
@@ -138,13 +195,18 @@ func (driver *Driver) Run(ctx context.Context, ready chan struct{}, evsink api.E
 		case cmd := <-driver.control:
 			switch cmd.Type {
 			case cmdAdd:
-				if err := rctx.add(cmd.Arg.(string)); err != nil {
-					select {
-					case <-ctx.Done():
-					case cmd.Reply <- err:
+				reply := cmd.Reply
+				if err := rctx.add(cmd.Payload.(string)); err != nil {
+					if reply != nil {
+						select {
+						case <-ctx.Done():
+						case reply <- err:
+						}
 					}
 				}
-				close(cmd.Reply)
+				if reply != nil {
+					close(reply)
+				}
 			}
 		}
 	}
@@ -153,45 +215,24 @@ func (driver *Driver) Run(ctx context.Context, ready chan struct{}, evsink api.E
 type cmdRequest struct {
 	Type  int
 	Arg   interface{}
-	Reply chan error
-}
-
-const (
-	cmdAdd = iota + 1
-	cmdRemove
-)
-
-func (driver *Driver) sendCmd(ctx context.Context, cmd *cmdRequest) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case driver.control <- cmd:
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-cmd.Reply:
-			return err
-		}
-	}
+	reply chan error
 }
 
 // Add adds a new path to be watched by the driver
-func (driver *Driver) Add(ctx context.Context, path string) error {
-	cmd := &cmdRequest{
-		Type:  cmdAdd,
-		Arg:   path,
-		Reply: make(chan error),
+func (driver *Driver) Add(path string, options ...api.CommandOption) error {
+	cmd := &api.Command{
+		Type:    cmdAdd,
+		Payload: path,
 	}
-	return driver.sendCmd(ctx, cmd)
+	return driver.pending.SendCmd(cmd, options...)
 }
 
-func (driver *Driver) Remove(ctx context.Context, path string) error {
-	cmd := &cmdRequest{
-		Type:  cmdRemove,
-		Arg:   path,
-		Reply: make(chan error),
+func (driver *Driver) Remove(path string, options ...api.CommandOption) error {
+	cmd := &api.Command{
+		Type:    cmdRemove,
+		Payload: path,
 	}
-	return driver.sendCmd(ctx, cmd)
+	return driver.pending.SendCmd(cmd, options...)
 }
 
 func (rctx *runCtx) add(path string) error {

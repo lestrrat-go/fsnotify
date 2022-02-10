@@ -6,6 +6,7 @@ import (
 )
 
 type Option = option.Interface
+type CommandOption = api.CommandOption
 type WatchOption interface {
 	Option
 	watchOption()

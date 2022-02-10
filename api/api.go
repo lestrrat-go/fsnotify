@@ -125,3 +125,13 @@ type ErrorSink interface {
 	// of `Watch()`. It must be non-blocking.
 	Error(error)
 }
+
+type NilSink struct{}
+
+func (NilSink) Event(Event) {}
+func (NilSink) Error(error)     {}
+
+type ChanErrSink chan error
+func (s ChanErrSink) Error(err error) {
+	s<-err
+}

@@ -23,7 +23,7 @@ type ctrlCmd struct {
 
 type Watcher struct {
 	// The driver object behind this watcher.
-	driver Driver
+	driver api.Driver
 
 	// Hold the unique names of watch targets
 	targets map[string]struct{}
@@ -43,7 +43,7 @@ type Watcher struct {
 }
 
 // Create creates a new Watcher using the specified Driver.
-func Create(d Driver) *Watcher {
+func Create(d api.Driver) *Watcher {
 	var muPending sync.RWMutex
 	return &Watcher{
 		cond:      sync.NewCond(&muPending),
@@ -56,7 +56,7 @@ func Create(d Driver) *Watcher {
 	}
 }
 
-func (w *Watcher) Driver() Driver {
+func (w *Watcher) Driver() api.Driver {
 	return w.driver
 }
 
@@ -146,11 +146,6 @@ func (w *Watcher) processPendingCmds(ctx context.Context) {
 	}
 }
 
-type nilSink struct{}
-
-func (nilSink) Event(api.Event) {}
-func (nilSink) Error(error)     {}
-
 func (w *Watcher) clearPending() {
 	w.muPending.Lock()
 	w.pending = nil
@@ -164,8 +159,8 @@ func (w *Watcher) Watch(ctx context.Context, options ...WatchOption) {
 	defer w.clearPending()
 
 	// Unpack the options.
-	var errSink api.ErrorSink = nilSink{}
-	var evSink api.EventSink = nilSink{}
+	var errSink api.ErrorSink = api.NilSink{}
+	var evSink api.EventSink = api.NilSink{}
 	for _, option := range options {
 		switch option.Ident() {
 		case identErrorSink{}:
@@ -223,12 +218,12 @@ func (w *Watcher) handleControlCmd(ctx context.Context, cmd *ctrlCmd) error {
 		//nolint:forcetypeassert
 		name := cmd.Arg.(string)
 		name = filepath.Clean(name)
-		return w.driver.Add(ctx, name)
+		return w.driver.Add(name)
 	case cmdRemoveEntry:
 		//nolint:forcetypeassert
 		name := cmd.Arg.(string)
 		name = filepath.Clean(name)
-		return w.driver.Remove(ctx, name)
+		return w.driver.Remove(name)
 	default:
 		//nolint:forcetypeassert
 		ev := cmd.Arg.(api.Event)
