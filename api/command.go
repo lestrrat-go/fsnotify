@@ -93,7 +93,7 @@ func (q *CommandQueue) Drain(ctx context.Context) {
 
 		q.cond.L.Unlock()
 
-		for _, v := range q.pending {
+		for _, v := range pending {
 			egress := q.chooser.Choose(v)
 			select {
 			case <-ctx.Done():
