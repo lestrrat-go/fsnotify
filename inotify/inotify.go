@@ -101,43 +101,6 @@ func (rctx *runCtx) epollWakeClear() error {
 	return err
 }
 
-/*
-
-func (driver *Driver) drainPending(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		driver.cond.L.Lock()
-		for len(driver.pending) <= 0 {
-			driver.cond.Wait()
-
-			select {
-			case <-ctx.Done():
-				driver.cond.L.Unlock()
-				return
-			default:
-			}
-		}
-
-		for len(driver.pending) > 0 {
-			cmd := driver.pending[0]
-			select {
-			case <-ctx.Done():
-				driver.cond.L.Unlock()
-				return
-			case driver.control <- cmd:
-			}
-		}
-
-		driver.cond.L.Unlock()
-	}
-}
-*/
-
 func (driver *Driver) Run(ctx context.Context, ready chan struct{}, evsink api.EventSink, errsink api.ErrorSink) {
 	driver.control = make(chan *api.Command)
 
